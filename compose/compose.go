@@ -43,13 +43,15 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 )
 
 // Compose is the main type exported by the package, used to interact with a running Docker Compose configuration.
 type Compose struct {
-	fileName   string
-	Containers map[string]*Container
+	fileName           string
+	composeProjectName string
+	Containers         map[string]*Container
 }
 
 var (
@@ -58,15 +60,14 @@ var (
 	composeUpRegexp  = regexp.MustCompile("(?m:docker start <- \\(u'(.*)'\\)$)")
 )
 
-const (
-	composeProjectName = "compose"
-)
-
 // Start starts a Docker Compose configuration.
 // If forcePull is true, it attempts do pull newer versions of the images.
 // If rmFirst is true, it attempts to kill and delete containers before starting new ones.
 func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 	logger.Println("initializing...")
+
+	projectName := RandStringBytes(10)
+
 	dockerComposeYML = replaceEnv(dockerComposeYML)
 
 	fName, err := writeTmp(dockerComposeYML)
@@ -74,7 +75,7 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 		return nil, err
 	}
 
-	ids, err := composeStart(fName, forcePull, rmFirst)
+	ids, err := composeStart(fName, projectName, forcePull, rmFirst)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +93,7 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 		containers[container.Name[1:]] = container
 	}
 
-	return &Compose{fileName: fName, Containers: containers}, nil
+	return &Compose{fileName: fName, composeProjectName: projectName, Containers: containers}, nil
 }
 
 // MustStart is like Start, but panics on error.
@@ -106,7 +107,7 @@ func MustStart(dockerComposeYML string, forcePull, killFirst bool) *Compose {
 
 // Kill kills any running containers for the current configuration.
 func (c *Compose) Kill() error {
-	return composeKill(c.fileName)
+	return composeKill(c.fileName, c.composeProjectName)
 }
 
 // MustKill is like Kill, but panics on error.
@@ -114,6 +115,36 @@ func (c *Compose) MustKill() {
 	if err := c.Kill(); err != nil {
 		panic(err)
 	}
+}
+
+// GetPublicIPAddressForService returns the IPAddress of a service
+func (c *Compose) GetPublicIPAddressForService(serviceName string) (bool, string) {
+
+	//iterate containers
+	for _, container := range c.Containers {
+		// look in NetworkSettings.Networks
+		for _, network := range container.NetworkSettings.Networks {
+
+			// iterate networks
+			sort.Strings(network.Aliases)
+			i := sort.SearchStrings(network.Aliases, serviceName)
+
+			if i < len(network.Aliases) {
+				return true, network.IPAddress
+			}
+
+		}
+	}
+	return false, ""
+}
+
+// MustGetPublicIPAddressForService is like GetPublicIPAddressForService, but panics if not found
+func (c *Compose) MustGetPublicIPAddressForService(serviceName string) string {
+	found, ipAddress := c.GetPublicIPAddressForService(serviceName)
+	if !found {
+		panic(fmt.Errorf("ipaddress for service %s not found", serviceName))
+	}
+	return ipAddress
 }
 
 func replaceEnv(dockerComposeYML string) string {
@@ -124,25 +155,25 @@ func replaceEnvFunc(s string) string {
 	return os.Getenv(strings.TrimSpace(s[2 : len(s)-1]))
 }
 
-func composeStart(fName string, forcePull, rmFirst bool) ([]string, error) {
+func composeStart(fName, composeProjectName string, forcePull, rmFirst bool) ([]string, error) {
 	if forcePull {
 		logger.Println("pulling images...")
-		if _, err := composeRun(fName, "pull"); err != nil {
+		if _, err := composeRun(fName, composeProjectName, "pull"); err != nil {
 			return nil, fmt.Errorf("compose: error pulling images: %v", err)
 		}
 	}
 
 	if rmFirst {
-		if err := composeKill(fName); err != nil {
+		if err := composeKill(fName, composeProjectName); err != nil {
 			return nil, err
 		}
-		if err := composeRm(fName); err != nil {
+		if err := composeRm(fName, composeProjectName); err != nil {
 			return nil, err
 		}
 	}
 
 	logger.Println("starting containers...")
-	out, err := composeRun(fName, "--verbose", "up", "-d")
+	out, err := composeRun(fName, composeProjectName, "--verbose", "up", "-d")
 	if err != nil {
 		return nil, fmt.Errorf("compose: error starting containers: %v", err)
 	}
@@ -157,25 +188,25 @@ func composeStart(fName string, forcePull, rmFirst bool) ([]string, error) {
 	return ids, nil
 }
 
-func composeKill(fName string) error {
+func composeKill(fName, composeProjectName string) error {
 	logger.Println("killing stale containers...")
-	_, err := composeRun(fName, "kill")
+	_, err := composeRun(fName, composeProjectName, "kill")
 	if err != nil {
 		return fmt.Errorf("compose: error killing stale containers: %v", err)
 	}
 	return err
 }
 
-func composeRm(fName string) error {
+func composeRm(fName, composeProjectName string) error {
 	logger.Println("removing stale containers...")
-	_, err := composeRun(fName, "rm", "--force")
+	_, err := composeRun(fName, composeProjectName, "rm", "--force")
 	if err != nil {
 		return fmt.Errorf("compose: error removing stale containers: %v", err)
 	}
 	return err
 }
 
-func composeRun(fName string, otherArgs ...string) (string, error) {
+func composeRun(fName, composeProjectName string, otherArgs ...string) (string, error) {
 	args := []string{"-f", fName, "-p", composeProjectName}
 	args = append(args, otherArgs...)
 	return runCmd("docker-compose", args...)
