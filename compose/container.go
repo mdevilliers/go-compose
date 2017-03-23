@@ -54,6 +54,7 @@ type PortBinding struct {
 	HostPort string `json:"HostPort,omitempty"`
 }
 
+// Network models  the network section of the `docker inspect` command.
 type Network struct {
 	IPAddress string   `json:"IPAddress"`
 	Aliases   []string `json:"Aliases"`
