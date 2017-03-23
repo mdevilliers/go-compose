@@ -4,13 +4,11 @@ Package compose provides a Go wrapper around Docker Compose, useful for integrat
 	// Define Compose config.
 	var composeYML =`
 	test_mockserver:
-	  container_name: ms
 	  image: jamesdbloom/mockserver
 	  ports:
 	    - "10000:1080"
 	    - "${SOME_ENV_VAR}" # This is replaced with the value of SOME_ENV_VAR.
 	test_postgres:
-	  container_name: pg
 	  image: postgres
 	  ports:
 	    - "5432"
@@ -27,7 +25,7 @@ Package compose provides a Go wrapper around Docker Compose, useful for integrat
 	mockServerURL := fmt.Sprintf(
 		"http://%v:%v",
 		compose.MustInferDockerHost(),
-		c.Containers["ms"].MustGetFirstPublicPort(1080, "tcp"))
+		c.Containers["test_mockserver"].MustGetFirstPublicPort(1080, "tcp"))
 
 	// Wait for MockServer to start accepting connections.
 	MustConnectWithDefaults(func() error {
