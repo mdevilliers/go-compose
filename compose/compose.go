@@ -43,7 +43,6 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -102,7 +101,7 @@ func StartProject(dockerComposeYML string, forcePull, rmFirst bool, projectName 
 		if !container.State.Running {
 			return nil, fmt.Errorf("compose: container '%v' is not running", container.Name)
 		}
-		containers[container.Name[1:]] = container
+		containers[container.Config.Labels["com.docker.compose.service"]] = container
 	}
 
 	return &Compose{fileName: fName, composeProjectName: projectName, Containers: containers}, nil
@@ -136,36 +135,6 @@ func (c *Compose) MustKill() {
 	if err := c.Kill(); err != nil {
 		panic(err)
 	}
-}
-
-// GetPublicIPAddressForService returns the IPAddress of a service
-func (c *Compose) GetPublicIPAddressForService(serviceName string) (bool, string) {
-
-	//iterate containers
-	for _, container := range c.Containers {
-		// look in NetworkSettings.Networks
-		for _, network := range container.NetworkSettings.Networks {
-
-			// iterate aliases looking for the service
-			sort.Strings(network.Aliases)
-			i := sort.SearchStrings(network.Aliases, serviceName)
-
-			if i < len(network.Aliases) {
-				return true, network.IPAddress
-			}
-
-		}
-	}
-	return false, ""
-}
-
-// MustGetPublicIPAddressForService is like GetPublicIPAddressForService, but panics if not found
-func (c *Compose) MustGetPublicIPAddressForService(serviceName string) string {
-	found, ipAddress := c.GetPublicIPAddressForService(serviceName)
-	if !found {
-		panic(fmt.Errorf("ipaddress for service %s not found", serviceName))
-	}
-	return ipAddress
 }
 
 func replaceEnv(dockerComposeYML string) string {

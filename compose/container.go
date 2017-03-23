@@ -44,20 +44,13 @@ type State struct {
 
 // NetworkSettings models the network settings section of the `docker inspect` command.
 type NetworkSettings struct {
-	Ports    map[string][]PortBinding `json:"Ports,omitempty"`
-	Networks map[string]Network       `json:"Networks"`
+	Ports map[string][]PortBinding `json:"Ports,omitempty"`
 }
 
 // PortBinding models a port binding in the network settings section of the `docker inspect command.
 type PortBinding struct {
 	HostIP   string `json:"HostIP,omitempty"`
 	HostPort string `json:"HostPort,omitempty"`
-}
-
-// Network models  the network section of the `docker inspect` command.
-type Network struct {
-	IPAddress string   `json:"IPAddress"`
-	Aliases   []string `json:"Aliases"`
 }
 
 // Inspect inspects a container using the `docker inspect` command and returns a parsed version of its output.

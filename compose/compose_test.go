@@ -10,13 +10,11 @@ import (
 
 var goodYML = `
 test_mockserver:
-  container_name: ms
   image: jamesdbloom/mockserver
   ports:
     - "10000:1080"
     - "1090"
 test_postgres:
-  container_name: pg
   image: postgres
   ports:
     - "5432"
@@ -30,13 +28,15 @@ func TestGoodYML(t *testing.T) {
 	compose := MustStart(goodYML, true, true)
 	defer compose.MustKill()
 
-	if compose.Containers["ms"].Name != "/ms" {
-		t.Fatalf("found name '%v', expected '/ms", compose.Containers["ms"].Name)
+	if compose.Containers["test_mockserver"] == nil {
+		t.Fatal("expected container called 'test_mockserver'")
 	}
-	if compose.Containers["pg"].Name != "/pg" {
-		t.Fatalf("found name '%v', expected '/pg", compose.Containers["pg"].Name)
+
+	if compose.Containers["test_postgres"] == nil {
+		t.Fatal("expected container called 'test_postgres'")
 	}
-	if port := compose.Containers["ms"].MustGetFirstPublicPort(1080, "tcp"); port != 10000 {
+
+	if port := compose.Containers["test_mockserver"].MustGetFirstPublicPort(1080, "tcp"); port != 10000 {
 		t.Fatalf("found port %v, expected 10000", port)
 	}
 }
@@ -71,7 +71,7 @@ func TestMustConnectWithDefaults(t *testing.T) {
 	compose := MustStart(goodYML, true, true)
 	defer compose.MustKill()
 
-	mockServerURL := fmt.Sprintf("http://%v:%v", MustInferDockerHost(), compose.Containers["ms"].MustGetFirstPublicPort(1080, "tcp"))
+	mockServerURL := fmt.Sprintf("http://%v:%v", MustInferDockerHost(), compose.Containers["test_mockserver"].MustGetFirstPublicPort(1080, "tcp"))
 
 	MustConnectWithDefaults(func() error {
 		logger.Print("attempting to connect to mockserver...")
@@ -91,8 +91,12 @@ version: '2'
 services:
   one:
     image: jamesdbloom/mockserver
+    ports :
+      - 1080
   two:
     image: jamesdbloom/mockserver
+    ports :
+      - 1080
 `
 
 	compose1 := MustStartParallel(parallelYML, false)
@@ -100,11 +104,13 @@ services:
 	compose2 := MustStartParallel(parallelYML, false)
 	defer compose2.MustKill()
 
+	fmt.Println(compose1)
+
 	// get the URL for the service 'one' in the first docker-compose cluster
-	mockServer1URL := fmt.Sprintf("http://%s:%d", compose1.MustGetPublicIPAddressForService("one"), 1080)
+	mockServer1URL := fmt.Sprintf("http://%s:%d", MustInferDockerHost(), compose1.Containers["one"].MustGetFirstPublicPort(1080, "tcp"))
 
 	// get the URL for the service 'two' in the second docker-compose cluster
-	mockServer2URL := fmt.Sprintf("http://%s:%d", compose2.MustGetPublicIPAddressForService("two"), 1080)
+	mockServer2URL := fmt.Sprintf("http://%s:%d", MustInferDockerHost(), compose2.Containers["two"].MustGetFirstPublicPort(1080, "tcp"))
 
 	fmt.Println(mockServer1URL, mockServer2URL)
 
@@ -146,8 +152,10 @@ func TestMustInspect(t *testing.T) {
 	compose := MustStart(goodYML, true, true)
 	defer compose.MustKill()
 
-	ms := MustInspect(compose.Containers["ms"].ID)
-	if ms.Name != "/ms" {
-		t.Errorf("found '%v', expected '/ms", ms.Name)
+	expectedName := compose.Containers["test_mockserver"].Name
+	ms := MustInspect(compose.Containers["test_mockserver"].ID)
+
+	if ms.Name != expectedName {
+		t.Errorf("found '%v', expected %s", ms.Name, expectedName)
 	}
 }
