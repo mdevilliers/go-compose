@@ -61,12 +61,22 @@ var (
 )
 
 // Start starts a Docker Compose configuration.
+// Fixes the Docker Compose project name to a known value so existing containers can be killed.
 // If forcePull is true, it attempts do pull newer versions of the images.
 // If rmFirst is true, it attempts to kill and delete containers before starting new ones.
 func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
-	logger.Println("initializing...")
+	return startInternal(dockerComposeYML, forcePull, rmFirst, "compose")
+}
 
-	projectName := RandStringBytes(10)
+// StartParallel starts a Docker Compose configuration and is suitable for concurrent usage.
+// Note that the services should not bind to localhost ports.
+func StartParallel(dockerComposeYML string, forcePull bool) (*Compose, error) {
+	return startInternal(dockerComposeYML, forcePull, false, RandStringBytes(9))
+}
+
+func startInternal(dockerComposeYML string, forcePull, rmFirst bool, projectName string) (*Compose, error) {
+
+	logger.Println("initializing...")
 
 	dockerComposeYML = replaceEnv(dockerComposeYML)
 
@@ -99,6 +109,15 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 // MustStart is like Start, but panics on error.
 func MustStart(dockerComposeYML string, forcePull, killFirst bool) *Compose {
 	compose, err := Start(dockerComposeYML, forcePull, killFirst)
+	if err != nil {
+		panic(err)
+	}
+	return compose
+}
+
+// MustStartParallel is like StartParallel, but panics on error.
+func MustStartParallel(dockerComposeYML string, forcePull bool) *Compose {
+	compose, err := StartParallel(dockerComposeYML, forcePull)
 	if err != nil {
 		panic(err)
 	}
