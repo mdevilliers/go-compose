@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -80,6 +81,58 @@ func TestMustConnectWithDefaults(t *testing.T) {
 		}
 		return err
 	})
+}
+
+func TestParallelMustConnectWithDefaults(t *testing.T) {
+
+	// NOTE that the services don't bind to local port
+	parallelYML := `
+version: '2'
+services:
+  one:
+    image: jamesdbloom/mockserver
+  two:
+    image: jamesdbloom/mockserver
+`
+
+	compose1 := MustStartParallel(parallelYML, false)
+	defer compose1.MustKill()
+	compose2 := MustStartParallel(parallelYML, false)
+	defer compose2.MustKill()
+
+	// get the URL for the service 'one' in the first docker-compose cluster
+	mockServer1URL := fmt.Sprintf("http://%s:%d", compose1.MustGetPublicIPAddressForService("one"), 1080)
+
+	// get the URL for the service 'two' in the second docker-compose cluster
+	mockServer2URL := fmt.Sprintf("http://%s:%d", compose2.MustGetPublicIPAddressForService("two"), 1080)
+
+	fmt.Println(mockServer1URL, mockServer2URL)
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+
+	MustConnectWithDefaults(func() error {
+		logger.Print("attempting to connect to mockserver1...")
+		_, err := http.Get(mockServer1URL)
+		if err == nil {
+			logger.Print("connected to mockserver1")
+			wg.Done()
+		}
+		return err
+	})
+
+	MustConnectWithDefaults(func() error {
+		logger.Print("attempting to connect to mockserver2...")
+		_, err := http.Get(mockServer2URL)
+		if err == nil {
+			logger.Print("connected to mockserver2")
+			wg.Done()
+		}
+		return err
+	})
+
+	wg.Wait()
+
 }
 
 func TestInspectUnknownContainer(t *testing.T) {
