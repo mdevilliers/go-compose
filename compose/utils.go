@@ -67,7 +67,7 @@ func writeTmp(content string) (string, error) {
 
 const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-func RandStringBytes(n int) string {
+func randStringBytes(n int) string {
 	b := make([]byte, n)
 	for i := range b {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]

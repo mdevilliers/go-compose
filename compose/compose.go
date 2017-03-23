@@ -71,7 +71,7 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 // StartParallel starts a Docker Compose configuration and is suitable for concurrent usage.
 // Note that the services should not bind to localhost ports.
 func StartParallel(dockerComposeYML string, forcePull bool) (*Compose, error) {
-	return startInternal(dockerComposeYML, forcePull, false, RandStringBytes(9))
+	return startInternal(dockerComposeYML, forcePull, false, randStringBytes(9))
 }
 
 func startInternal(dockerComposeYML string, forcePull, rmFirst bool, projectName string) (*Compose, error) {
@@ -144,7 +144,7 @@ func (c *Compose) GetPublicIPAddressForService(serviceName string) (bool, string
 		// look in NetworkSettings.Networks
 		for _, network := range container.NetworkSettings.Networks {
 
-			// iterate networks
+			// iterate aliases looking for the service
 			sort.Strings(network.Aliases)
 			i := sort.SearchStrings(network.Aliases, serviceName)
 
