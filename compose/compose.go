@@ -65,16 +65,18 @@ var (
 // If forcePull is true, it attempts do pull newer versions of the images.
 // If rmFirst is true, it attempts to kill and delete containers before starting new ones.
 func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
-	return startInternal(dockerComposeYML, forcePull, rmFirst, "compose")
+	return StartProject(dockerComposeYML, forcePull, rmFirst, "compose")
 }
 
 // StartParallel starts a Docker Compose configuration and is suitable for concurrent usage.
-// Note that the services should not bind to localhost ports.
+// The project name is defined at random to ensure multiple instances can be run.
+// Note: that the docker services should not bind to localhost ports.
 func StartParallel(dockerComposeYML string, forcePull bool) (*Compose, error) {
-	return startInternal(dockerComposeYML, forcePull, false, randStringBytes(9))
+	return StartProject(dockerComposeYML, forcePull, false, randStringBytes(9))
 }
 
-func startInternal(dockerComposeYML string, forcePull, rmFirst bool, projectName string) (*Compose, error) {
+// StartProject starts a Docker Compose configuration, giving fine grained control of all of the properties.
+func StartProject(dockerComposeYML string, forcePull, rmFirst bool, projectName string) (*Compose, error) {
 
 	logger.Println("initializing...")
 
