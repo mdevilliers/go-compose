@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"os/exec"
 	"regexp"
@@ -37,6 +38,7 @@ func MustInferDockerHost() string {
 
 func runCmd(name string, args ...string) (string, error) {
 	var outBuf bytes.Buffer
+
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &outBuf
@@ -50,6 +52,7 @@ func runCmd(name string, args ...string) (string, error) {
 
 func writeTmp(content string) (string, error) {
 	f, err := ioutil.TempFile("", "docker-compose-")
+
 	if err != nil {
 		return "", fmt.Errorf("compose: error creating temp file: %v", err)
 	}
@@ -60,4 +63,14 @@ func writeTmp(content string) (string, error) {
 	}
 
 	return f.Name(), nil
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func randStringBytes(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }

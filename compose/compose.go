@@ -4,13 +4,11 @@ Package compose provides a Go wrapper around Docker Compose, useful for integrat
 	// Define Compose config.
 	var composeYML =`
 	test_mockserver:
-	  container_name: ms
 	  image: jamesdbloom/mockserver
 	  ports:
 	    - "10000:1080"
 	    - "${SOME_ENV_VAR}" # This is replaced with the value of SOME_ENV_VAR.
 	test_postgres:
-	  container_name: pg
 	  image: postgres
 	  ports:
 	    - "5432"
@@ -27,7 +25,7 @@ Package compose provides a Go wrapper around Docker Compose, useful for integrat
 	mockServerURL := fmt.Sprintf(
 		"http://%v:%v",
 		compose.MustInferDockerHost(),
-		c.Containers["ms"].MustGetFirstPublicPort(1080, "tcp"))
+		c.Containers["test_mockserver"].MustGetFirstPublicPort(1080, "tcp"))
 
 	// Wait for MockServer to start accepting connections.
 	MustConnectWithDefaults(func() error {
@@ -48,8 +46,9 @@ import (
 
 // Compose is the main type exported by the package, used to interact with a running Docker Compose configuration.
 type Compose struct {
-	fileName   string
-	Containers map[string]*Container
+	fileName           string
+	composeProjectName string
+	Containers         map[string]*Container
 }
 
 var (
@@ -58,15 +57,26 @@ var (
 	composeUpRegexp  = regexp.MustCompile("(?m:docker start <- \\(u'(.*)'\\)$)")
 )
 
-const (
-	composeProjectName = "compose"
-)
-
 // Start starts a Docker Compose configuration.
+// Fixes the Docker Compose project name to a known value so existing containers can be killed.
 // If forcePull is true, it attempts do pull newer versions of the images.
 // If rmFirst is true, it attempts to kill and delete containers before starting new ones.
 func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
+	return StartProject(dockerComposeYML, forcePull, rmFirst, "compose")
+}
+
+// StartParallel starts a Docker Compose configuration and is suitable for concurrent usage.
+// The project name is defined at random to ensure multiple instances can be run.
+// Note: that the docker services should not bind to localhost ports.
+func StartParallel(dockerComposeYML string, forcePull bool) (*Compose, error) {
+	return StartProject(dockerComposeYML, forcePull, false, randStringBytes(9))
+}
+
+// StartProject starts a Docker Compose configuration, giving fine grained control of all of the properties.
+func StartProject(dockerComposeYML string, forcePull, rmFirst bool, projectName string) (*Compose, error) {
+
 	logger.Println("initializing...")
+
 	dockerComposeYML = replaceEnv(dockerComposeYML)
 
 	fName, err := writeTmp(dockerComposeYML)
@@ -74,7 +84,7 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 		return nil, err
 	}
 
-	ids, err := composeStart(fName, forcePull, rmFirst)
+	ids, err := composeStart(fName, projectName, forcePull, rmFirst)
 	if err != nil {
 		return nil, err
 	}
@@ -89,10 +99,10 @@ func Start(dockerComposeYML string, forcePull, rmFirst bool) (*Compose, error) {
 		if !container.State.Running {
 			return nil, fmt.Errorf("compose: container '%v' is not running", container.Name)
 		}
-		containers[container.Name[1:]] = container
+		containers[container.Config.Labels["com.docker.compose.service"]] = container
 	}
 
-	return &Compose{fileName: fName, Containers: containers}, nil
+	return &Compose{fileName: fName, composeProjectName: projectName, Containers: containers}, nil
 }
 
 // MustStart is like Start, but panics on error.
@@ -104,9 +114,18 @@ func MustStart(dockerComposeYML string, forcePull, killFirst bool) *Compose {
 	return compose
 }
 
+// MustStartParallel is like StartParallel, but panics on error.
+func MustStartParallel(dockerComposeYML string, forcePull bool) *Compose {
+	compose, err := StartParallel(dockerComposeYML, forcePull)
+	if err != nil {
+		panic(err)
+	}
+	return compose
+}
+
 // Kill kills any running containers for the current configuration.
 func (c *Compose) Kill() error {
-	return composeKill(c.fileName)
+	return composeKill(c.fileName, c.composeProjectName)
 }
 
 // MustKill is like Kill, but panics on error.
@@ -124,25 +143,25 @@ func replaceEnvFunc(s string) string {
 	return os.Getenv(strings.TrimSpace(s[2 : len(s)-1]))
 }
 
-func composeStart(fName string, forcePull, rmFirst bool) ([]string, error) {
+func composeStart(fName, composeProjectName string, forcePull, rmFirst bool) ([]string, error) {
 	if forcePull {
 		logger.Println("pulling images...")
-		if _, err := composeRun(fName, "pull"); err != nil {
+		if _, err := composeRun(fName, composeProjectName, "pull"); err != nil {
 			return nil, fmt.Errorf("compose: error pulling images: %v", err)
 		}
 	}
 
 	if rmFirst {
-		if err := composeKill(fName); err != nil {
+		if err := composeKill(fName, composeProjectName); err != nil {
 			return nil, err
 		}
-		if err := composeRm(fName); err != nil {
+		if err := composeRm(fName, composeProjectName); err != nil {
 			return nil, err
 		}
 	}
 
 	logger.Println("starting containers...")
-	out, err := composeRun(fName, "--verbose", "up", "-d")
+	out, err := composeRun(fName, composeProjectName, "--verbose", "up", "-d")
 	if err != nil {
 		return nil, fmt.Errorf("compose: error starting containers: %v", err)
 	}
@@ -157,25 +176,25 @@ func composeStart(fName string, forcePull, rmFirst bool) ([]string, error) {
 	return ids, nil
 }
 
-func composeKill(fName string) error {
+func composeKill(fName, composeProjectName string) error {
 	logger.Println("killing stale containers...")
-	_, err := composeRun(fName, "kill")
+	_, err := composeRun(fName, composeProjectName, "kill")
 	if err != nil {
 		return fmt.Errorf("compose: error killing stale containers: %v", err)
 	}
 	return err
 }
 
-func composeRm(fName string) error {
+func composeRm(fName, composeProjectName string) error {
 	logger.Println("removing stale containers...")
-	_, err := composeRun(fName, "rm", "--force")
+	_, err := composeRun(fName, composeProjectName, "rm", "--force")
 	if err != nil {
 		return fmt.Errorf("compose: error removing stale containers: %v", err)
 	}
 	return err
 }
 
-func composeRun(fName string, otherArgs ...string) (string, error) {
+func composeRun(fName, composeProjectName string, otherArgs ...string) (string, error) {
 	args := []string{"-f", fName, "-p", composeProjectName}
 	args = append(args, otherArgs...)
 	return runCmd("docker-compose", args...)
