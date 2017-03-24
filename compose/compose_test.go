@@ -104,15 +104,11 @@ services:
 	compose2 := MustStartParallel(parallelYML, false)
 	defer compose2.MustKill()
 
-	fmt.Println(compose1)
-
 	// get the URL for the service 'one' in the first docker-compose cluster
 	mockServer1URL := fmt.Sprintf("http://%s:%d", MustInferDockerHost(), compose1.Containers["one"].MustGetFirstPublicPort(1080, "tcp"))
 
 	// get the URL for the service 'two' in the second docker-compose cluster
 	mockServer2URL := fmt.Sprintf("http://%s:%d", MustInferDockerHost(), compose2.Containers["two"].MustGetFirstPublicPort(1080, "tcp"))
-
-	fmt.Println(mockServer1URL, mockServer2URL)
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
