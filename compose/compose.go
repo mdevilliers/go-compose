@@ -47,7 +47,7 @@ import (
 // Compose is the main type exported by the package, used to interact with a running Docker Compose configuration.
 type Compose struct {
 	fileName           string
-	composeProjectName string
+	ComposeProjectName string
 	Containers         map[string]*Container
 }
 
@@ -102,7 +102,7 @@ func StartProject(dockerComposeYML string, forcePull, rmFirst bool, projectName 
 		containers[container.Config.Labels["com.docker.compose.service"]] = container
 	}
 
-	return &Compose{fileName: fName, composeProjectName: projectName, Containers: containers}, nil
+	return &Compose{fileName: fName, ComposeProjectName: projectName, Containers: containers}, nil
 }
 
 // MustStart is like Start, but panics on error.
@@ -125,7 +125,7 @@ func MustStartParallel(dockerComposeYML string, forcePull bool) *Compose {
 
 // Kill kills any running containers for the current configuration.
 func (c *Compose) Kill() error {
-	return composeKill(c.fileName, c.composeProjectName)
+	return composeKill(c.fileName, c.ComposeProjectName)
 }
 
 // MustKill is like Kill, but panics on error.
